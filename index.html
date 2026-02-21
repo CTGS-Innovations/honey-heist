@@ -7,7 +7,8 @@
 <style>
 * { margin: 0; padding: 0; box-sizing: border-box; }
 body { background: #000; display: flex; justify-content: center; align-items: center; height: 100vh; overflow: hidden; touch-action: none; }
-canvas { display: block; max-width: 100vw; max-height: 100vh; object-fit: contain; }
+canvas { display: block; }
+body.maximized canvas { width: 100vw; height: 100vh; object-fit: contain; }
 #joystick { display: none; position: fixed; bottom: 30px; right: 30px; z-index: 9999;
   width: 140px; height: 140px; border-radius: 50%;
   border: 3px solid rgba(255,255,255,0.3); background: rgba(255,255,255,0.08);
@@ -16,8 +17,9 @@ canvas { display: block; max-width: 100vw; max-height: 100vh; object-fit: contai
   background: rgba(255,255,255,0.35); border: 2px solid rgba(255,255,255,0.5);
   top: 42px; left: 42px; pointer-events: none; transition: none; }
 #game-container:fullscreen { width: 100vw; height: 100vh; display: flex; justify-content: center; align-items: center; background: #000; }
-#game-container:fullscreen canvas { max-width: 100vw; max-height: 100vh; }
+#game-container:fullscreen canvas { width: 100vw; height: 100vh; object-fit: contain; }
 #game-container:-webkit-full-screen { width: 100vw; height: 100vh; display: flex; justify-content: center; align-items: center; background: #000; }
+#game-container:-webkit-full-screen canvas { width: 100vw; height: 100vh; object-fit: contain; }
 </style>
 </head>
 <body>
@@ -25,8 +27,8 @@ canvas { display: block; max-width: 100vw; max-height: 100vh; object-fit: contai
   <canvas id="game" width="800" height="600"></canvas>
   <div id="joystick"><div id="joystick-knob"></div></div>
 </div>
-<script src="sprites.js"></script>
-<script src="sounds.js"></script>
+<script src="sprites.js?v=1771639030"></script>
+<script src="sounds.js?v=1771639030"></script>
 <script>
 // === CONSTANTS ===
 const W = 800;
@@ -90,8 +92,7 @@ const keys = {};
 window.addEventListener('keydown', e => {
   keys[e.key] = true;
   if (e.key === 'f' || e.key === 'F') {
-    if (!document.fullscreenElement) gameContainer.requestFullscreen().catch(()=>{});
-    else document.exitFullscreen().catch(()=>{});
+    document.body.classList.toggle('maximized');
   }
 });
 window.addEventListener('keyup', e => { keys[e.key] = false; });
@@ -638,7 +639,8 @@ function gameLoop(timestamp) {
       keys['_tap'] = false;
       state = resetState();
       state.titleScreen = false;
-      gameContainer.requestFullscreen().catch(()=>{});
+      if ('ontouchstart' in window) gameContainer.requestFullscreen().catch(()=>{});
+      else document.body.classList.add('maximized');
     }
   }
 
@@ -718,6 +720,11 @@ if ('ontouchstart' in window) {
     }
   }, {passive: false});
 }
+
+// Desktop: double-click to toggle maximized
+canvas.addEventListener('dblclick', () => {
+  document.body.classList.toggle('maximized');
+});
 </script>
 </body>
 </html>
