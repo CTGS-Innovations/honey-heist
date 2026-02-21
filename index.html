@@ -2,15 +2,31 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no">
 <title>Cyber-Thor's Honey Heist</title>
 <style>
 * { margin: 0; padding: 0; box-sizing: border-box; }
-body { background: #000; display: flex; justify-content: center; align-items: center; height: 100vh; overflow: hidden; }
-canvas { display: block; }
+body { background: #000; display: flex; justify-content: center; align-items: center; height: 100vh; overflow: hidden; touch-action: none; }
+canvas { display: block; max-width: 100vw; max-height: 100vh; object-fit: contain; }
+#joystick { display: none; position: fixed; bottom: 30px; right: 30px; z-index: 9999;
+  width: 140px; height: 140px; border-radius: 50%;
+  border: 3px solid rgba(255,255,255,0.3); background: rgba(255,255,255,0.08);
+  touch-action: none; }
+#joystick-knob { position: absolute; width: 56px; height: 56px; border-radius: 50%;
+  background: rgba(255,255,255,0.35); border: 2px solid rgba(255,255,255,0.5);
+  top: 42px; left: 42px; pointer-events: none; transition: none; }
+#game-container:fullscreen { width: 100vw; height: 100vh; display: flex; justify-content: center; align-items: center; background: #000; }
+#game-container:fullscreen canvas { max-width: 100vw; max-height: 100vh; }
+#game-container:-webkit-full-screen { width: 100vw; height: 100vh; display: flex; justify-content: center; align-items: center; background: #000; }
 </style>
 </head>
 <body>
-<canvas id="game" width="800" height="600"></canvas>
+<div id="game-container" style="position:relative; display:inline-block;">
+  <canvas id="game" width="800" height="600"></canvas>
+  <div id="joystick"><div id="joystick-knob"></div></div>
+</div>
+<script src="sprites.js"></script>
+<script src="sounds.js"></script>
 <script>
 // === CONSTANTS ===
 const W = 800;
@@ -65,12 +81,19 @@ const POLLEN_BAR_H = 16;
 let highScore = parseInt(localStorage.getItem('honeyHeistHighScore')) || 0;
 
 // === CANVAS SETUP ===
+const gameContainer = document.getElementById('game-container');
 const canvas = document.getElementById('game');
 const ctx = canvas.getContext('2d');
 
 // === INPUT ===
 const keys = {};
-window.addEventListener('keydown', e => { keys[e.key] = true; });
+window.addEventListener('keydown', e => {
+  keys[e.key] = true;
+  if (e.key === 'f' || e.key === 'F') {
+    if (!document.fullscreenElement) gameContainer.requestFullscreen().catch(()=>{});
+    else document.exitFullscreen().catch(()=>{});
+  }
+});
 window.addEventListener('keyup', e => { keys[e.key] = false; });
 
 // === STATE ===
@@ -208,6 +231,7 @@ function update(dt) {
     p.stunned = true;
     s.stunTimer = LIGHTNING_STUN_DURATION;
     s.lightningFlash = true;
+    playSound('lightning_zap');
     s.lightningFlashTimer = LIGHTNING_FLASH_DURATION;
     s.lightningTimer = LIGHTNING_MIN + Math.random() * (LIGHTNING_MAX - LIGHTNING_MIN);
   }
@@ -260,6 +284,7 @@ function update(dt) {
     if (aabb(p, itemBox)) {
       if (item.type === 'pollen') {
         s.pollen++;
+        playSound('pollen_pickup');
         if (s.pollen >= POLLEN_TO_HONEY) {
           s.pollen = 0;
           s.honey++;
@@ -267,10 +292,12 @@ function update(dt) {
         }
       } else if (item.type === 'gold_token') {
         p.tokenMultiplier += TOKEN_SPEED_BONUS;
+        playSound('token_pickup');
       } else if (item.type === 'blue_token') {
         // Activate rage mode
         s.rageActive = true;
         s.rageTimer = RAGE_DURATION;
+        playSound('rage_activation');
         p.w = PLAYER_SIZE * 2;
         p.h = PLAYER_SIZE * 2;
       }
@@ -321,8 +348,10 @@ function update(dt) {
         s.lives--;
         s.invincibleTimer = INVINCIBLE_DURATION;
         s.shakeTimer = SHAKE_DURATION;
+        playSound('enemy_hit');
         if (s.lives <= 0) {
           s.gameOver = true;
+          playSound('game_over');
           if (s.score > highScore) {
             highScore = s.score;
             localStorage.setItem('honeyHeistHighScore', highScore);
@@ -336,8 +365,12 @@ function update(dt) {
 // === DRAW ===
 function draw() {
   // Clear
-  ctx.fillStyle = '#111';
-  ctx.fillRect(0, 0, W, H);
+  if (spriteReady('background')) {
+    ctx.drawImage(SPRITE.background, 0, 0, W, H);
+  } else {
+    ctx.fillStyle = '#111';
+    ctx.fillRect(0, 0, W, H);
+  }
 
   if (state.titleScreen) {
     drawTitleScreen();
@@ -363,32 +396,51 @@ function draw() {
   // --- Draw items ---
   for (const item of s.items) {
     if (item.type === 'pollen') {
-      ctx.fillStyle = '#ffdd00';
-      ctx.beginPath();
-      ctx.arc(item.x, item.y, POLLEN_RADIUS, 0, Math.PI * 2);
-      ctx.fill();
+      if (spriteReady('pollen')) {
+        ctx.drawImage(SPRITE.pollen, item.x - POLLEN_RADIUS, item.y - POLLEN_RADIUS, POLLEN_RADIUS * 2, POLLEN_RADIUS * 2);
+      } else {
+        ctx.fillStyle = '#ffdd00';
+        ctx.beginPath();
+        ctx.arc(item.x, item.y, POLLEN_RADIUS, 0, Math.PI * 2);
+        ctx.fill();
+      }
     } else if (item.type === 'gold_token') {
-      ctx.fillStyle = '#ffaa00';
-      ctx.fillRect(item.x, item.y, item.w, item.h);
-      // Diamond accent
-      ctx.fillStyle = '#fff';
-      ctx.fillRect(item.x + 4, item.y + 4, 6, 6);
+      if (spriteReady('gold_token')) {
+        ctx.drawImage(SPRITE.gold_token, item.x, item.y, item.w, item.h);
+      } else {
+        ctx.fillStyle = '#ffaa00';
+        ctx.fillRect(item.x, item.y, item.w, item.h);
+        ctx.fillStyle = '#fff';
+        ctx.fillRect(item.x + 4, item.y + 4, 6, 6);
+      }
     } else if (item.type === 'blue_token') {
-      ctx.fillStyle = '#00ccff';
-      ctx.fillRect(item.x, item.y, item.w, item.h);
-      ctx.fillStyle = '#fff';
-      ctx.fillRect(item.x + 4, item.y + 4, 6, 6);
+      if (spriteReady('blue_token')) {
+        ctx.drawImage(SPRITE.blue_token, item.x, item.y, item.w, item.h);
+      } else {
+        ctx.fillStyle = '#00ccff';
+        ctx.fillRect(item.x, item.y, item.w, item.h);
+        ctx.fillStyle = '#fff';
+        ctx.fillRect(item.x + 4, item.y + 4, 6, 6);
+      }
     }
   }
 
   // --- Draw enemies ---
   for (const e of s.enemies) {
     if (e.type === 'queen') {
-      ctx.fillStyle = '#ff3333';
-      ctx.fillRect(e.x, e.y, e.w, e.h);
+      if (spriteReady('queen_bee')) {
+        ctx.drawImage(SPRITE.queen_bee, e.x, e.y, e.w, e.h);
+      } else {
+        ctx.fillStyle = '#ff3333';
+        ctx.fillRect(e.x, e.y, e.w, e.h);
+      }
     } else {
-      ctx.fillStyle = '#9933ff';
-      ctx.fillRect(e.x, e.y, e.w, e.h);
+      if (spriteReady('loki_doom')) {
+        ctx.drawImage(SPRITE.loki_doom, e.x, e.y, e.w, e.h);
+      } else {
+        ctx.fillStyle = '#9933ff';
+        ctx.fillRect(e.x, e.y, e.w, e.h);
+      }
     }
   }
 
@@ -397,8 +449,16 @@ function draw() {
   if (s.invincibleTimer > 0 && Math.floor(s.invincibleTimer * 10) % 2 === 0) {
     // Skip drawing on even frames for flash effect
   } else {
-    ctx.fillStyle = s.rageActive ? '#ff2200' : '#4488ff';
-    ctx.fillRect(p.x, p.y, p.w, p.h);
+    if (spriteReady('player')) {
+      ctx.drawImage(SPRITE.player, p.x, p.y, p.w, p.h);
+      if (s.rageActive) {
+        ctx.fillStyle = 'rgba(255,0,0,0.4)';
+        ctx.fillRect(p.x, p.y, p.w, p.h);
+      }
+    } else {
+      ctx.fillStyle = s.rageActive ? '#ff2200' : '#4488ff';
+      ctx.fillRect(p.x, p.y, p.w, p.h);
+    }
   }
 
   // --- Lightning flash overlay ---
@@ -482,35 +542,61 @@ function drawHUD() {
 }
 
 function drawTitleScreen() {
+  if (spriteReady('background')) {
+    ctx.drawImage(SPRITE.background, 0, 0, W, H);
+    ctx.fillStyle = 'rgba(0,0,0,0.6)';
+    ctx.fillRect(0, 0, W, H);
+  }
+
+  ctx.textAlign = 'center';
+
   // Subtitle
   ctx.fillStyle = '#9933ff';
-  ctx.font = '16px monospace';
-  ctx.textAlign = 'center';
-  ctx.fillText('~ A BLOCKY THOR ADVENTURE ~', W / 2, H / 2 - 100);
+  ctx.font = '14px monospace';
+  ctx.fillText('~ A BLOCKY THOR ADVENTURE ~', W / 2, 60);
 
   // Title
   ctx.fillStyle = '#4488ff';
-  ctx.font = 'bold 48px monospace';
-  ctx.fillText("CYBER-THOR'S", W / 2, H / 2 - 50);
-  ctx.fillText('HONEY HEIST', W / 2, H / 2 + 10);
+  ctx.font = 'bold 40px monospace';
+  ctx.fillText("CYBER-THOR'S", W / 2, 100);
+  ctx.fillText('HONEY HEIST', W / 2, 148);
 
-  // Controls
+  // Instructions
+  ctx.font = '13px monospace';
+  let y = 190;
+  const gap = 22;
   ctx.fillStyle = '#888';
-  ctx.font = '14px monospace';
-  ctx.fillText('WASD / Arrow Keys to move', W / 2, H / 2 + 50);
-  ctx.fillText('Collect pollen, dodge enemies, survive!', W / 2, H / 2 + 72);
+  ctx.fillText('WASD / Arrow Keys to move', W / 2, y); y += gap;
+  ctx.fillStyle = '#ffdd00';
+  ctx.fillText('Collect POLLEN (yellow) \u2192 10 pollen = 1 honey = +100 pts', W / 2, y); y += gap;
+  ctx.fillStyle = '#ffaa00';
+  ctx.fillText('GOLD TOKENS = permanent +10% speed boost', W / 2, y); y += gap;
+  ctx.fillStyle = '#00ccff';
+  ctx.fillText('BLUE TOKENS = OPTIMUS RAGE MODE (invincible!)', W / 2, y); y += gap;
+  ctx.fillStyle = '#ff3333';
+  ctx.fillText('Queen Bee enemies (red) \u2014 fast & small', W / 2, y); y += gap;
+  ctx.fillStyle = '#9933ff';
+  ctx.fillText('Loki/Doom enemies (purple) \u2014 slow & tracks you', W / 2, y); y += gap;
+  ctx.fillStyle = '#fff';
+  ctx.fillText('3 lives \u2022 Lightning stuns you \u2022 Survive!', W / 2, y); y += gap + 8;
 
   // High score
   if (highScore > 0) {
     ctx.fillStyle = '#ffaa00';
     ctx.font = '16px monospace';
-    ctx.fillText('High Score: ' + highScore, W / 2, H / 2 + 105);
+    ctx.fillText('High Score: ' + highScore, W / 2, y); y += gap + 4;
   }
 
   // Start prompt
   ctx.fillStyle = '#ffcc00';
-  ctx.font = '20px monospace';
-  ctx.fillText('Press ENTER to start', W / 2, H / 2 + 140);
+  ctx.font = 'bold 20px monospace';
+  const isTouchDevice = 'ontouchstart' in window;
+  ctx.fillText(isTouchDevice ? 'Tap to start' : 'Press ENTER to start', W / 2, y); y += gap;
+
+  // Fullscreen hint
+  ctx.fillStyle = '#555';
+  ctx.font = '12px monospace';
+  ctx.fillText(isTouchDevice ? 'Double-tap for fullscreen' : 'Press F for fullscreen', W / 2, y);
   ctx.textAlign = 'left';
 }
 
@@ -536,7 +622,7 @@ function drawGameOver() {
   }
   ctx.fillStyle = '#ffcc00';
   ctx.font = '20px monospace';
-  ctx.fillText('Press ENTER to restart', W / 2, H / 2 + 110);
+  ctx.fillText(('ontouchstart' in window) ? 'Tap to restart' : 'Press ENTER to restart', W / 2, H / 2 + 110);
   ctx.textAlign = 'left';
 }
 
@@ -547,10 +633,12 @@ function gameLoop(timestamp) {
 
   // Title / Game Over input
   if (state.titleScreen || state.gameOver) {
-    if (keys['Enter']) {
+    if (keys['Enter'] || keys['_tap']) {
       keys['Enter'] = false;
+      keys['_tap'] = false;
       state = resetState();
       state.titleScreen = false;
+      gameContainer.requestFullscreen().catch(()=>{});
     }
   }
 
@@ -563,6 +651,73 @@ requestAnimationFrame(function(timestamp) {
   lastTime = timestamp;
   gameLoop(timestamp);
 });
+
+// === TOUCH CONTROLS (Virtual Joystick) ===
+if ('ontouchstart' in window) {
+  const joy = document.getElementById('joystick');
+  const knob = document.getElementById('joystick-knob');
+  joy.style.display = 'block';
+
+  const DEAD_ZONE = 0.2; // fraction of radius
+  let joyActive = false;
+  let joyId = null;
+
+  function updateJoystick(touchX, touchY) {
+    const rect = joy.getBoundingClientRect();
+    const cx = rect.left + rect.width / 2;
+    const cy = rect.top + rect.height / 2;
+    const maxR = rect.width / 2 - 10;
+    let dx = touchX - cx;
+    let dy = touchY - cy;
+    const dist = Math.sqrt(dx * dx + dy * dy);
+    if (dist > maxR) { dx = (dx / dist) * maxR; dy = (dy / dist) * maxR; }
+    knob.style.left = (rect.width / 2 - 28 + dx) + 'px';
+    knob.style.top = (rect.height / 2 - 28 + dy) + 'px';
+    const norm = dist / maxR;
+    keys['ArrowLeft'] = (dx < -maxR * DEAD_ZONE);
+    keys['ArrowRight'] = (dx > maxR * DEAD_ZONE);
+    keys['ArrowUp'] = (dy < -maxR * DEAD_ZONE);
+    keys['ArrowDown'] = (dy > maxR * DEAD_ZONE);
+  }
+
+  function resetJoystick() {
+    joyActive = false; joyId = null;
+    knob.style.left = '42px'; knob.style.top = '42px';
+    keys['ArrowLeft'] = false; keys['ArrowRight'] = false;
+    keys['ArrowUp'] = false; keys['ArrowDown'] = false;
+  }
+
+  joy.addEventListener('touchstart', e => {
+    e.preventDefault(); e.stopPropagation();
+    const t = e.changedTouches[0];
+    joyActive = true; joyId = t.identifier;
+    updateJoystick(t.clientX, t.clientY);
+  }, {passive: false});
+
+  joy.addEventListener('touchmove', e => {
+    e.preventDefault();
+    for (const t of e.changedTouches) {
+      if (t.identifier === joyId) { updateJoystick(t.clientX, t.clientY); break; }
+    }
+  }, {passive: false});
+
+  joy.addEventListener('touchend', e => {
+    for (const t of e.changedTouches) {
+      if (t.identifier === joyId) { resetJoystick(); break; }
+    }
+  }, {passive: false});
+
+  joy.addEventListener('touchcancel', () => { resetJoystick(); }, {passive: false});
+
+  // Tap canvas to start — also go fullscreen on first touch
+  canvas.addEventListener('touchstart', e => {
+    e.preventDefault();
+    keys['_tap'] = true;
+    if (!document.fullscreenElement) {
+      gameContainer.requestFullscreen().catch(()=>{});
+    }
+  }, {passive: false});
+}
 </script>
 </body>
 </html>
